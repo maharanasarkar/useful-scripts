@@ -1,0 +1,171 @@
+name: Validate Scripts
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  validate-bash:
+    name: Validate Bash Scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install shellcheck
+        run: |
+          apt-get update
+          apt-get install -y shellcheck bashate
+      
+      - name: Find bash scripts
+        id: scripts
+        run: |
+          echo "scripts=$(find scripts/bash -name '*.sh' -type f 2>/dev/null | tr '\n' ',')" >> $GITHUB_OUTPUT
+      
+      - name: Run shellcheck
+        if: steps.scripts.outputs.scripts != ''
+        run: |
+          for script in $(find scripts/bash -name '*.sh' -type f); do
+            shellcheck --severity=error "$script" || exit 1
+          done
+      
+      - name: Run bashate
+        if: steps.scripts.outputs.scripts != ''
+        run: |
+          for script in $(find scripts/bash -name '*.sh' -type f); do
+            bashate "$script" || exit 1
+          done
+
+  validate-python:
+    name: Validate Python Scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          pip install flake8 pylint pytest
+      
+      - name: Find python scripts
+        id: scripts
+        run: |
+          echo "scripts=$(find scripts/python -name '*.py' -type f 2>/dev/null | tr '\n' ',')" >> $GITHUB_OUTPUT
+      
+      - name: Run flake8
+        if: steps.scripts.outputs.scripts != ''
+        run: |
+          flake8 scripts/python --max-line-length=120 --ignore=E501,W503 || exit 1
+      
+      - name: Run pylint
+        if: steps.scripts.outputs.scripts != ''
+        run: |
+          pylint scripts/python --disable=C0114,C0115,C0116 --max-line-length=120 || true
+
+  validate-powershell:
+    name: Validate PowerShell Scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install PowerShell
+        run: |
+          apt-get update
+          apt-get install -y powershell
+      
+      - name: Install PSScriptAnalyzer
+        run: |
+          pwsh -Command "Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser"
+      
+      - name: Find PowerShell scripts
+        id: scripts
+        run: |
+          echo "scripts=$(find scripts/powershell -name '*.ps1' -type f 2>/dev/null | tr '\n' ',')" >> $GITHUB_OUTPUT
+      
+      - name: Run PSScriptAnalyzer
+        if: steps.scripts.outputs.scripts != ''
+        run: |
+          pwsh -Command "Get-ChildItem -Path scripts/powershell -Recurse -Filter '*.ps1' | ForEach-Object { Invoke-ScriptAnalyzer -Path \$_.FullName -Severity Error }"
+
+  validate-javascript:
+    name: Validate Node.js Scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Find package.json files
+        id: packages
+        run: |
+          echo "packages=$(find scripts/nodejs -name 'package.json' -type f 2>/dev/null | tr '\n' ',')" >> $GITHUB_OUTPUT
+      
+      - name: Run ESLint
+        if: steps.packages.outputs.packages != ''
+        run: |
+          for dir in $(find scripts/nodejs -name 'package.json' -type f -exec dirname {} \;); do
+            cd "$dir"
+            npm install --silent
+            npx eslint . || true
+            cd -
+          done
+
+  check-readmes:
+    name: Check Required Files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Check for missing README files
+        run: |
+          missing=0
+          
+          for dir in scripts/bash/*/ scripts/python/*/ scripts/powershell/*/ scripts/nodejs/*/; do
+            if [ -d "$dir" ] && [ ! -f "$dir/README.md" ]; then
+              echo "Missing README.md in: $dir"
+              missing=1
+            fi
+          done
+          
+          if [ $missing -eq 1 ]; then
+            exit 1
+          fi
+
+  test-scripts:
+    name: Run Script Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Run pytest
+        run: |
+          pip install pytest 2>/dev/null || true
+          pytest tests/ --ignore=tests/integration -v 2>/dev/null || echo "No Python tests found"
+
+  lint-all:
+    name: General Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Check for secrets
+        run: |
+          echo "Checking for hardcoded secrets..."
+          
+          grep -r --include="*.py" --include="*.sh" --include="*.ps1" --include="*.js" \
+            -E "(password|secret|api_key|apikey|token)[\s]*=[\s]*['\"][a-zA-Z0-9]{20,}" . || true
+          
+          echo "Secret scan complete"

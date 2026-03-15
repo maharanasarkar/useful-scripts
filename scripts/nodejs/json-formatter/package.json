@@ -1,0 +1,27 @@
+{
+  "name": "json-formatter",
+  "version": "1.0.0",
+  "description": "Format, validate, and prettify JSON files",
+  "main": "json-formatter.js",
+  "bin": {
+    "json-formatter": "./json-formatter.js"
+  },
+  "scripts": {
+    "test": "echo \"No tests specified\" && exit 0",
+    "lint": "echo \"No linter configured\" && exit 0"
+  },
+  "keywords": [
+    "json",
+    "formatter",
+    "validator",
+    "cli"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^11.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

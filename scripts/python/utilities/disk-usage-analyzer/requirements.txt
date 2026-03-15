@@ -1,0 +1,5 @@
+# Runtime dependencies (none required - uses Python stdlib only)
+# tkinter is included with Python by default on Windows
+
+# Development dependencies
+pytest>=7.0.0
